@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    margin: 0;
+    background: #000000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  canvas {
+    background: url('https://i.ibb.co/V0sbKt5P/back.jpg') repeat-x;
+    border: 2px solid #000;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+<script>
+// Canvas setup
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// Bird properties
+const bird = {
+  x: 60,
+  y: 300,
+  width: 64,
+  height: 54,
+  gravity: 0.2,
+  lift: -5,
+  velocity: 4
+};
+
+let pipes = [];
+let score = 0;
+let highscore = 0;
+let gameOver = false;
+let gameStarted = false;
+
+const birdImg = new Image();
+birdImg.src = "https://i.ibb.co/vxvW70mS/pngegg.png";
+
+const bgImg = new Image();
+bgImg.src = "https://i.ibb.co/V0sbKt5P/back.jpg";
+let bgX = 0;
+
+// Audio
+const soundWelcome = new Audio("https://www.myinstants.com/media/sounds/startup-sound.mp3");
+const soundStart = new Audio("https://www.myinstants.com/media/sounds/game-start.mp3");
+const soundBackground = new Audio("https://www.myinstants.com/media/sounds/panjabi-mc-mundian-to-bach-ke-the-dictator-soundtrack-0s-7s-djztxj2gpfk.mp3");
+soundBackground.loop = true;
+
+const jumpSound = new Audio("https://www.myinstants.com/media/sounds/maro-jump-sound-effect_1.mp3");
+const collisionSound = new Audio("https://www.myinstants.com/media/sounds/bone-crack.mp3");
+const gameOverSound = new Audio("https://www.myinstants.com/media/sounds/meme-de-creditos-finales.mp3");
+const restartSound = new Audio("https://www.myinstants.com/media/sounds/acha.mp3");
+const scoreSound = new Audio("https://www.myinstants.com/media/sounds/ceeday-huh-sound-effect.mp3");
+
+function playSoundSequentially(audio) {
+  return new Promise(resolve => {
+    audio.currentTime = 0;
+    audio.play();
+    audio.onended = resolve;
+  });
+}
+
+const pipeWidth = 60;
+const gap = 200;
+
+function createPipe() {
+  const topHeight = Math.floor(Math.random() * (canvas.height - gap - 100)) + 50;
+  pipes.push({
+    x: canvas.width,
+    top: topHeight,
+    bottom: canvas.height - topHeight - gap,
+    passed: false
+  });
+}
+
+async function handleInput() {
+  if (gameOver) {
+    restartSound.currentTime = 0;
+    restartSound.play();
+    resetGame();
+    soundBackground.currentTime = 0;
+    soundBackground.play();
+  } else {
+    if (!gameStarted) {
+      gameStarted = true;
+      await playSoundSequentially(soundWelcome);
+      await playSoundSequentially(soundStart);
+      soundBackground.currentTime = 0;
+      soundBackground.play();
+    }
+    bird.velocity = bird.lift;
+    jumpSound.currentTime = 0;
+    jumpSound.play();
+  }
+}
+
+// Desktop space key
+document.addEventListener("keydown", async function(e) {
+  if (e.code === "Space") {
+    handleInput();
+  }
+});
+
+// Mobile touch
+canvas.addEventListener("touchstart", function(e) {
+  handleInput();
+});
+
+function isColliding(rect1, rect2) {
+  return !(
+    rect1.x + rect1.width < rect2.x ||
+    rect1.x > rect2.x + rect2.width ||
+    rect1.y + rect1.height < rect2.y ||
+    rect1.y > rect2.y + rect2.height
+  );
+}
+
+let handlingGameOver = false;
+
+async function handleGameOverSounds() {
+  if (handlingGameOver) return;
+  handlingGameOver = true;
+  soundBackground.pause();
+  soundBackground.currentTime = 0;
+  await playSoundSequentially(collisionSound);
+  await playSoundSequentially(gameOverSound);
+  await playSoundSequentially(scoreSound);
+}
+
+function update() {
+  if (gameOver || !gameStarted) return;
+
+  bird.velocity += bird.gravity;
+  bird.y += bird.velocity;
+
+  bgX -= 1;
+  if (bgX <= -canvas.width) bgX = 0;
+
+  if (pipes.length === 0 || pipes[pipes.length - 1].x < 200) {
+    createPipe();
+  }
+
+  pipes.forEach(pipe => {
+    pipe.x -= 2;
+
+    const birdRect = {
+      x: bird.x + 17,
+      y: bird.y + 12,
+      width: bird.width - 32,
+      height: bird.height - 22
+    };
+
+    const topRect = {x: pipe.x, y: 0, width: pipeWidth, height: pipe.top};
+    const bottomRect = {x: pipe.x, y: pipe.top + gap, width: pipeWidth, height: pipe.bottom};
+
+    if ((isColliding(birdRect, topRect) || isColliding(birdRect, bottomRect)) && !gameOver) {
+      gameOver = true;
+      handleGameOverSounds();
+    }
+
+    if (!pipe.passed && pipe.x + pipeWidth < bird.x) {
+      score++;
+      scoreSound.currentTime = 0;
+      scoreSound.play();
+      if (score > highscore) highscore = score;
+      pipe.passed = true;
+    }
+  });
+
+  if ((bird.y + bird.height > canvas.height || bird.y < 0) && !gameOver) {
+    gameOver = true;
+    handleGameOverSounds();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.drawImage(bgImg, bgX, 0, canvas.width, canvas.height);
+  ctx.drawImage(bgImg, bgX + canvas.width, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#228B22";
+  pipes.forEach(pipe => {
+    ctx.fillRect(pipe.x, 0, pipeWidth, pipe.top);
+    ctx.fillRect(pipe.x, pipe.top + gap, pipeWidth, pipe.bottom);
+  });
+
+  let angle = Math.min(Math.max(bird.velocity * 3, -25), 25);
+  ctx.save();
+  ctx.translate(bird.x + bird.width / 2, bird.y + bird.height / 2);
+  ctx.rotate(angle * Math.PI / 180);
+  ctx.drawImage(birdImg, -bird.width / 2, -bird.height / 2, bird.width, bird.height);
+  ctx.restore();
+
+  ctx.fillStyle = "white";
+  ctx.font = "24px Arial";
+  ctx.fillText(`Score: ${score}`, 10, 30);
+  ctx.fillText(`Highscore: ${highscore}`, 10, 60);
+
+  if (gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "white";
+    ctx.font = "36px Arial";
+    ctx.fillText("Game Over", 110, 250);
+    ctx.font = "24px Arial";
+    ctx.fillText("Tap ya Space dabake restart", 50, 300);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function resetGame() {
+  bird.y = 300;
+  bird.velocity = 0;
+  pipes = [];
+  score = 0;
+  gameOver = false;
+  handlingGameOver = false;
+  gameStarted = false;
+}
+
+loop();
+</script>
+</body>
+</html>
